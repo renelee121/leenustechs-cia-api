@@ -25,6 +25,8 @@
     <properties>
         <java.version>21</java.version>
 
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+
         <maven.minimum.version>3.9.16</maven.minimum.version>
 
         <lombok.version>1.18.46</lombok.version>
@@ -42,6 +44,18 @@
         </project.reporting.outputEncoding>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
 
         <!-- API REST con Spring MVC y Tomcat embebido -->
@@ -50,22 +64,22 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- Validación Jakarta -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-validation</artifactId>
-        </dependency>
-
-        <!-- Plantillas HTML -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-        </dependency>
-
         <!-- Health checks y métricas -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Feign -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-openfeign</artifactId>
+        </dependency>
+
+        <!-- Apache Kafka -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
         </dependency>
 
         <!-- MapStruct API -->
@@ -80,14 +94,6 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- Desarrollo local -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-devtools</artifactId>
-            <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
 
