@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import mx.com.leenustechs.cia.business.services.OperationTypeService;
+import mx.com.leenustechs.cia.business.utils.exceptions.EmptyOperationResponseException;
 import mx.com.leenustechs.cia.business.utils.mappers.CommonModelMapper;
 import mx.com.leenustechs.cia.models.CommonModel;
 import mx.com.leenustechs.cia.models.requests.CommonModelRequest;
@@ -33,8 +34,7 @@ public class ConfigApiProcessor {
         CommonModelResponse response = operationTypeService.execute(event);
 
         if (response == null) {
-            log.error("No response returned for event: {}", event);
-            throw new IllegalStateException("No response returned for event: " + event);
+            throw new EmptyOperationResponseException(event);
         }
 
         return response;
