@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="
+             http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>mx.com.leenustechs</groupId>
+    <artifactId>cia-api</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>cia-api</name>
+    <description>API de CIA construida con Spring Boot y Java 21</description>
+
+    <properties>
+        <java.version>21</java.version>
+
+        <maven.minimum.version>3.9.16</maven.minimum.version>
+
+        <lombok.version>1.18.46</lombok.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+        <lombok-mapstruct-binding.version>
+            0.2.0
+        </lombok-mapstruct-binding.version>
+
+        <project.build.sourceEncoding>
+            UTF-8
+        </project.build.sourceEncoding>
+
+        <project.reporting.outputEncoding>
+            UTF-8
+        </project.reporting.outputEncoding>
+    </properties>
+
+    <dependencies>
+
+        <!-- API REST con Spring MVC y Tomcat embebido -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Validación Jakarta -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- Plantillas HTML -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
+        <!-- Health checks y métricas -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- MapStruct API -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>${mapstruct.version}</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Desarrollo local -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-devtools</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Pruebas -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <finalName>${project.artifactId}</finalName>
+
+        <plugins>
+
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+
+                <configuration>
+                    <mainClass>
+                        mx.com.leenustechs.App
+                    </mainClass>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+
+                <configuration>
+                    <release>${java.version}</release>
+                    <parameters>true</parameters>
+
+                    <annotationProcessorPaths>
+
+                        <!-- Lombok genera getters y constructores -->
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+
+                        <!-- Permite que MapStruct reconozca Lombok -->
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>
+                                lombok-mapstruct-binding
+                            </artifactId>
+                            <version>
+                                ${lombok-mapstruct-binding.version}
+                            </version>
+                        </path>
+
+                        <!-- Genera CommonModelMapperImpl -->
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>
+                                mapstruct-processor
+                            </artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+
+                    </annotationProcessorPaths>
+
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+
+                <executions>
+                    <execution>
+                        <id>enforce-build-environment</id>
+
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+
+                        <configuration>
+                            <rules>
+
+                                <requireJavaVersion>
+                                    <version>[21,22)</version>
+                                    <message>
+                                        Este proyecto requiere Java 21.
+                                    </message>
+                                </requireJavaVersion>
+
+                                <requireMavenVersion>
+                                    <version>
+                                        [${maven.minimum.version},4.0.0)
+                                    </version>
+                                    <message>
+                                        Este proyecto requiere Maven 3.9.16
+                                        o superior.
+                                    </message>
+                                </requireMavenVersion>
+
+                                <dependencyConvergence/>
+
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
