@@ -28,7 +28,7 @@ public class CommandDispatcherServiceImpl implements CommandDispatcherService{
                     operationMap.put(type, operation);
     }
 
-    public EventOperation getOperation(OperationType command){
+    private EventOperation getOperation(OperationType command){
         EventOperation operation = operationMap.get(command);
         if(operation == null)
             throw new IllegalArgumentException("No operation found for command: " + command);
