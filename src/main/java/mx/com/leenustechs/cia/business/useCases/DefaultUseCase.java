@@ -21,7 +21,7 @@ public class DefaultUseCase implements EventOperation {
 
     @Override
     public Set<OperationType> getEventTypes() {
-        return Set.of(OperationType.UNKOWN);
+        return Set.of(OperationType.UNKNOWN);
     }
 
 }

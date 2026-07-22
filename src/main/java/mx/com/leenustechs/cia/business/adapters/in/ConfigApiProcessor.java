@@ -11,8 +11,6 @@ import mx.com.leenustechs.cia.models.CommonModel;
 import mx.com.leenustechs.cia.models.requests.CommonModelRequest;
 import mx.com.leenustechs.cia.models.responses.CommonModelResponse;
 import mx.com.leenustechs.cia.models.types.OperationType;
-import tools.jackson.databind.node.JsonNodeFactory;
-import tools.jackson.databind.node.ObjectNode;
 
 @Slf4j
 @Component
@@ -34,22 +32,11 @@ public class ConfigApiProcessor {
 
         CommonModelResponse response = operationTypeService.execute(event);
 
-        if (response != null) {
-            return response;
+        if (response == null) {
+            log.error("No response returned for event: {}", event);
+            throw new IllegalStateException("No response returned for event: " + event);
         }
 
-        return buildNoResponseError(transactionId);
-    }
-
-    private CommonModelResponse buildNoResponseError(String transactionId) {
-        ObjectNode errorPayload = JsonNodeFactory.instance.objectNode();
-
-        errorPayload.put("error", "No response from operation");
-
-        return new CommonModelResponse(
-                transactionId,
-                PRODUCER,
-                OperationType.LOGIN,
-                errorPayload);
+        return response;
     }
 }

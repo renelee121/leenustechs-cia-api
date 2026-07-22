@@ -29,7 +29,7 @@ public class OperationTypeServiceImpl implements OperationTypeService{
 
     @Override
     public EventOperation getOperation(OperationType command){
-        return operationMap.getOrDefault(command, operationMap.get(OperationType.UNKOWN));
+        return operationMap.getOrDefault(command, operationMap.get(OperationType.UNKNOWN));
     }
 
     @Override

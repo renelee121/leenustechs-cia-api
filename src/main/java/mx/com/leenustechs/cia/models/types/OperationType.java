@@ -4,6 +4,6 @@ public enum OperationType {
 
     LOGIN,
     LOGOUT,
-    UNKOWN;
+    UNKNOWN;
 
 }
