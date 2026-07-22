@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import mx.com.leenustechs.cia.business.services.OperationTypeService;
+import mx.com.leenustechs.cia.business.services.CommandDispatcherService;
 import mx.com.leenustechs.cia.business.utils.mappers.CommonModelMapper;
 import mx.com.leenustechs.cia.models.CommonModel;
 import mx.com.leenustechs.cia.models.requests.CommonModelRequest;
@@ -18,7 +18,7 @@ import mx.com.leenustechs.cia.models.types.OperationType;
 public class ConfigApiProcessor {
 
     private static final String PRODUCER = "CONFIG_API";
-    private final OperationTypeService operationTypeService;
+    private final CommandDispatcherService operationTypeService;
     private final CommonModelMapper commonModelMapper;
 
     public CommonModelResponse processLogin(CommonModelRequest requestEvent, HttpServletRequest request) {

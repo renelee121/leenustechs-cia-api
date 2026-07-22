@@ -6,7 +6,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
-import mx.com.leenustechs.cia.business.services.OperationTypeService;
+import mx.com.leenustechs.cia.business.services.CommandDispatcherService;
 import mx.com.leenustechs.cia.business.utils.commons.EventOperation;
 import mx.com.leenustechs.cia.business.utils.exceptions.EmptyOperationResponseException;
 import mx.com.leenustechs.cia.models.CommonModel;
@@ -14,11 +14,11 @@ import mx.com.leenustechs.cia.models.responses.CommonModelResponse;
 import mx.com.leenustechs.cia.models.types.OperationType;
 
 @Service
-public class OperationTypeServiceImpl implements OperationTypeService{
+public class CommandDispatcherServiceImpl implements CommandDispatcherService{
 
     private final Map<OperationType, EventOperation> operationMap;
 
-    public OperationTypeServiceImpl(List<EventOperation> operations){
+    public CommandDispatcherServiceImpl(List<EventOperation> operations){
         operationMap = new EnumMap<>(OperationType.class);
         for(EventOperation operation : operations)
             for(OperationType type : operation.getEventTypes())
@@ -30,7 +30,10 @@ public class OperationTypeServiceImpl implements OperationTypeService{
 
     @Override
     public EventOperation getOperation(OperationType command){
-        return operationMap.getOrDefault(command, operationMap.get(OperationType.UNKNOWN));
+        EventOperation operation = operationMap.get(command);
+        if(operation == null)
+            throw new IllegalArgumentException("No operation found for command: " + command);
+        return operation;
     }
 
     @Override
