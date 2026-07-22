@@ -5,6 +5,8 @@ import org.springframework.stereotype.Component;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.nio.charset.StandardCharsets;
+
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -19,15 +21,36 @@ public class KafkaProducerAdapter {
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
-    public void publish(String topic, String key, Object event){
-        log.info("Publishing event to Kafka topic: {}, key: {}, event: {}", topic, key, event);
+    public void publish(String topic, String key, Object event) {
+
+        log.info(
+                "Publishing event to Kafka topic: {}, key: {}",
+                topic,
+                key);
+
         ProducerRecord<String, Object> record = new ProducerRecord<>(topic, key, event);
-        record.headers().add("origin-service", applicationName.getBytes());
-        try{
-            kafkaTemplate.send(record);
-        }catch(Exception e){
-            log.error("Error publishing event to Kafka topic: {}, key: {}, event: {}, error: {}", topic, key, event, e.getMessage(), e);
-            throw e;
-        }
+
+        record.headers().add(
+                "origin-service",
+                applicationName.getBytes(StandardCharsets.UTF_8));
+
+        kafkaTemplate.send(record)
+                .whenComplete((result, ex) -> {
+
+                    if (ex != null) {
+                        log.error(
+                                "Error publishing Kafka event. topic: {}, key: {}",
+                                topic,
+                                key,
+                                ex);
+                        return;
+                    }
+
+                    log.debug(
+                            "Kafka event published. topic: {}, partition: {}, offset: {}",
+                            topic,
+                            result.getRecordMetadata().partition(),
+                            result.getRecordMetadata().offset());
+                });
     }
 }
