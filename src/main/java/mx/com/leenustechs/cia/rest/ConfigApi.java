@@ -6,9 +6,11 @@ import mx.com.leenustechs.cia.business.adapters.in.ConfigApiProcessor;
 import mx.com.leenustechs.cia.models.requests.CommonModelRequest;
 import mx.com.leenustechs.cia.models.responses.CommonModelResponse;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -23,10 +25,11 @@ public class ConfigApi {
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE
     )
-    public CommonModelResponse login(
+    @ResponseBody
+    public ResponseEntity<CommonModelResponse> login(
             @RequestBody CommonModelRequest requestEvent,
             HttpServletRequest request
     ) {
-        return configApiProcessor.processLogin(requestEvent, request);
+        return ResponseEntity.accepted().body(configApiProcessor.processLogin(requestEvent, request));
     }
 }
