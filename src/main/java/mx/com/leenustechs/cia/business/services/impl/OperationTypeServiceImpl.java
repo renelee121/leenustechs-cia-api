@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import mx.com.leenustechs.cia.business.services.OperationTypeService;
 import mx.com.leenustechs.cia.business.utils.commons.EventOperation;
+import mx.com.leenustechs.cia.business.utils.exceptions.EmptyOperationResponseException;
 import mx.com.leenustechs.cia.models.CommonModel;
 import mx.com.leenustechs.cia.models.responses.CommonModelResponse;
 import mx.com.leenustechs.cia.models.types.OperationType;
@@ -35,7 +36,13 @@ public class OperationTypeServiceImpl implements OperationTypeService{
     @Override
     public CommonModelResponse execute(CommonModel event){
         EventOperation operation = getOperation(event.getCommand());
-        return operation.execute(event);
+        CommonModelResponse response = operation.execute(event);
+
+        if (response == null) {
+            throw new EmptyOperationResponseException(event);
+        }
+
+        return response;
     }
     
 }
