@@ -12,13 +12,14 @@ leenustechs-cia-api
 │  │  │     └─ com
 │  │  │        └─ leenustechs
 │  │  │           ├─ App.java
-│  │  │           └─ cia
+│  │  │           └─ ciaApi
 │  │  │              ├─ business
 │  │  │              │  ├─ adapters
 │  │  │              │  │  ├─ in
 │  │  │              │  │  │  ├─ ApiInterceptor.java
 │  │  │              │  │  │  └─ ConfigApiProcessor.java
 │  │  │              │  │  └─ out
+│  │  │              │  │     └─ KafkaProducerAdapter.java
 │  │  │              │  ├─ services
 │  │  │              │  │  ├─ CommandDispatcherService.java
 │  │  │              │  │  └─ impl
@@ -27,6 +28,7 @@ leenustechs-cia-api
 │  │  │              │  │  └─ CommonEventUseCase.java
 │  │  │              │  └─ utils
 │  │  │              │     ├─ commons
+│  │  │              │     │  ├─ CustomSerializer.java
 │  │  │              │     │  └─ EventOperation.java
 │  │  │              │     ├─ exceptions
 │  │  │              │     │  ├─ EmptyOperationResponseException.java
@@ -34,10 +36,15 @@ leenustechs-cia-api
 │  │  │              │     └─ mappers
 │  │  │              │        └─ CommonModelMapper.java
 │  │  │              ├─ config
-│  │  │              │  └─ InterceptorConfig.java
+│  │  │              │  ├─ FeingConfig.java
+│  │  │              │  ├─ InterceptorConfig.java
+│  │  │              │  ├─ JacksonConfig.java
+│  │  │              │  └─ KafkaConfig.java
 │  │  │              ├─ models
 │  │  │              │  ├─ CommonModel.java
 │  │  │              │  ├─ Event.java
+│  │  │              │  ├─ constants
+│  │  │              │  │  └─ KafkaTopics.java
 │  │  │              │  ├─ requests
 │  │  │              │  │  └─ CommonModelRequest.java
 │  │  │              │  ├─ responses
@@ -63,10 +70,11 @@ leenustechs-cia-api
    │  ├─ mx
    │  │  └─ com
    │  │     └─ leenustechs
-   │  │        └─ cia
+   │  │        └─ ciaApi
    │  │           ├─ business
    │  │           │  ├─ adapters
-   │  │           │  │  └─ in
+   │  │           │  │  ├─ in
+   │  │           │  │  └─ out
    │  │           │  ├─ services
    │  │           │  │  └─ impl
    │  │           │  ├─ useCases
@@ -76,6 +84,7 @@ leenustechs-cia-api
    │  │           │     └─ mappers
    │  │           ├─ config
    │  │           ├─ models
+   │  │           │  ├─ constants
    │  │           │  ├─ requests
    │  │           │  ├─ responses
    │  │           │  └─ types
@@ -87,7 +96,7 @@ leenustechs-cia-api
    │     └─ mx
    │        └─ com
    │           └─ leenustechs
-   │              └─ cia
+   │              └─ ciaApi
    │                 └─ business
    │                    └─ utils
    │                       └─ mappers
