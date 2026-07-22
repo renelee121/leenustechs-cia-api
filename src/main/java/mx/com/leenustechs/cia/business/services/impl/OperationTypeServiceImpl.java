@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 
 import mx.com.leenustechs.cia.business.services.OperationTypeService;
 import mx.com.leenustechs.cia.business.utils.commons.EventOperation;
+import mx.com.leenustechs.cia.models.CommonModel;
+import mx.com.leenustechs.cia.models.responses.CommonModelResponse;
 import mx.com.leenustechs.cia.models.types.OperationType;
 
 @Service
@@ -25,8 +27,15 @@ public class OperationTypeServiceImpl implements OperationTypeService{
                     operationMap.put(type, operation);
     }
 
+    @Override
     public EventOperation getOperation(OperationType command){
         return operationMap.getOrDefault(command, operationMap.get(OperationType.UNKOWN));
+    }
+
+    @Override
+    public CommonModelResponse execute(CommonModel event){
+        EventOperation operation = getOperation(event.getCommand());
+        return operation.execute(event);
     }
     
 }

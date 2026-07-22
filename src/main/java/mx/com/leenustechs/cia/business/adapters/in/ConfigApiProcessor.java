@@ -32,7 +32,7 @@ public class ConfigApiProcessor {
                 PRODUCER,
                 OperationType.LOGIN);
 
-        CommonModelResponse response = event.getCommand().execute(event, operationTypeService);
+        CommonModelResponse response = operationTypeService.execute(event);
 
         if (response != null) {
             return response;
