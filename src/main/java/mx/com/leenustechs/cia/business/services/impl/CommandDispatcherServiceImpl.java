@@ -28,7 +28,6 @@ public class CommandDispatcherServiceImpl implements CommandDispatcherService{
                     operationMap.put(type, operation);
     }
 
-    @Override
     public EventOperation getOperation(OperationType command){
         EventOperation operation = operationMap.get(command);
         if(operation == null)
