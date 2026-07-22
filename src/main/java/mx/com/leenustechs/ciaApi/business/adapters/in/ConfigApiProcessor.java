@@ -17,7 +17,7 @@ import mx.com.leenustechs.ciaApi.models.types.OperationType;
 @RequiredArgsConstructor
 public class ConfigApiProcessor {
 
-    private static final String PRODUCER = "CONFIG_API";
+    private static final String PRODUCER = "CIA_API";
     private final CommandDispatcherService operationTypeService;
     private final CommonModelMapper commonModelMapper;
 
