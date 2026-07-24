@@ -2,6 +2,7 @@ package mx.com.leenustechs.ciaApi.rest;
 
 import lombok.extern.slf4j.Slf4j;
 import mx.com.leenustechs.ciaApi.business.utils.exceptions.EmptyOperationResponseException;
+import mx.com.leenustechs.ciaApi.models.records.ApiErrorResponse;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,12 +37,4 @@ public class GlobalExceptionHandler {
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(response);
     }
-}
-
-record ApiErrorResponse(
-        String transactionId,
-        String code,
-        String message,
-        Instant timestamp
-) {
 }
