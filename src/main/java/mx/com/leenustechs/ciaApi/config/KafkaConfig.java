@@ -20,6 +20,9 @@ import mx.com.leenustechs.ciaApi.business.utils.commons.CustomSerializer;
 @EnableKafka
 @Configuration
 public class KafkaConfig {
+
+    private static final String SECURITY_PROTOCOL = "SASL_SSL";
+    private static final String SASL_MECHANISM = "SCRAM-SHA-512";
     public static final String SASL_JAAS_CONFIG = "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"{0}\" password=\"{1}\";";
 
     private final String kafkaUsername;
@@ -48,6 +51,9 @@ public class KafkaConfig {
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, CustomSerializer.class);
+        configProps.put("security.protocol", SECURITY_PROTOCOL);
+        configProps.put("sasl.mechanism", SASL_MECHANISM);
+        configProps.put("sasl.jaas.config", getSaslJaasConfig());
         return new DefaultKafkaProducerFactory<>(configProps);
     }
 
