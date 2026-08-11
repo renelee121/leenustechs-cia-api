@@ -8,8 +8,8 @@ import org.springframework.context.annotation.ComponentScan;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@EnableFeignClients(basePackages = "mx.com.leenustechs.cia")
-@ComponentScan(basePackages = "mx.com.leenustechs.cia")
+@EnableFeignClients(basePackages = "mx.com.leenustechs.ciaApi")
+@ComponentScan(basePackages = "mx.com.leenustechs.ciaApi")
 @SpringBootApplication
 public class App {
     public static void main(String[] args) {
