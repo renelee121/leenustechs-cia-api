@@ -1,6 +1,7 @@
 package mx.com.leenustechs.ciaApi.business.adapters.in;
 
 import org.springframework.stereotype.Component;
+import mx.com.leenustechs.ciaApi.business.services.IdempotencyService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -20,18 +21,15 @@ public class ConfigApiProcessor {
     private static final String PRODUCER = "CIA_API";
     private final CommandDispatcherService operationTypeService;
     private final CommonModelMapper commonModelMapper;
+    private final IdempotencyService idempotencyService;
 
     public CommonModelResponse processLogin(CommonModelRequest requestEvent, HttpServletRequest request) {
-        String transactionId = (String) request.getAttribute("transactionId");
-
-        CommonModel event = commonModelMapper.toModel(
-                requestEvent,
-                transactionId,
-                PRODUCER,
-                OperationType.LOGIN);
-
-        CommonModelResponse response = operationTypeService.execute(event);
-
-        return response;
+        return idempotencyService.executeLogin(request.getHeader("Idempotency-Key"), requestEvent.getPayload(),
+                transactionId -> {
+                    request.setAttribute("transactionId", transactionId);
+                    CommonModel event = commonModelMapper.toModel(requestEvent, transactionId,
+                            PRODUCER, OperationType.LOGIN);
+                    return operationTypeService.execute(event);
+                });
     }
 }

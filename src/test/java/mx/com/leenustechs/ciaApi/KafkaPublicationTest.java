@@ -43,10 +43,19 @@ class KafkaPublicationTest {
         return adapter;
     }
 
+    private mx.com.leenustechs.ciaApi.business.services.IdempotencyService idempotency() {
+        var source = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:h2:mem:" + java.util.UUID.randomUUID() + ";DB_CLOSE_DELAY=-1", "sa", "");
+        new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
+                new org.springframework.core.io.ClassPathResource("schema.sql")).execute(source);
+        return new mx.com.leenustechs.ciaApi.business.services.IdempotencyService(
+                new org.springframework.jdbc.core.JdbcTemplate(source), mapper);
+    }
+
     private MockMvc api() {
         var useCase = new CommonEventUseCase(adapter());
         var processor = new ConfigApiProcessor(new CommandDispatcherServiceImpl(List.of(useCase)),
-                Mappers.getMapper(CommonModelMapper.class));
+                Mappers.getMapper(CommonModelMapper.class), idempotency());
         return MockMvcBuilders.standaloneSetup(new ConfigApi(processor))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addInterceptors(new mx.com.leenustechs.ciaApi.business.adapters.in.ApiInterceptor()).build();
@@ -77,7 +86,7 @@ class KafkaPublicationTest {
     void successfulHttpResponseDoesNotMutatePublishedPayload() throws Exception {
         when(template.send(any(ProducerRecord.class)))
                 .thenReturn(CompletableFuture.completedFuture(null));
-        api().perform(post("/config-api/v1/activation/login").contentType("application/json")
+        api().perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json")
                 .content("{\"payload\":{\"user\":\"alice\",\"status\":\"original\"}}"))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.payload.status").value("success"));
@@ -93,7 +102,7 @@ class KafkaPublicationTest {
     void failedAcknowledgementReturnsServiceUnavailable() throws Exception {
         when(template.send(any(ProducerRecord.class))).thenReturn(
                 CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")));
-        api().perform(post("/config-api/v1/activation/login").contentType("application/json")
+        api().perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json")
                 .content("{\"payload\":{}}"))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code").value("KAFKA_PUBLICATION_UNCONFIRMED"));
@@ -102,7 +111,7 @@ class KafkaPublicationTest {
     @Test
     void synchronousProducerFailureReturnsServiceUnavailable() throws Exception {
         when(template.send(any(ProducerRecord.class))).thenThrow(new IllegalStateException("creation failed"));
-        api().perform(post("/config-api/v1/activation/login").contentType("application/json")
+        api().perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json")
                 .content("{\"payload\":{}}")).andExpect(status().isServiceUnavailable());
     }
 
@@ -137,7 +146,7 @@ class KafkaPublicationTest {
         var api = api();
         for (var body : List.of("{}", "{\"payload\":null}", "{\"payload\":[]}",
                 "{\"payload\":\"text\"}", "{\"payload\":1}", "{\"payload\":true}")) {
-            api.perform(post("/config-api/v1/activation/login").contentType("application/json").content(body))
+            api.perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json").content(body))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.code").value("INVALID_PAYLOAD"));
         }

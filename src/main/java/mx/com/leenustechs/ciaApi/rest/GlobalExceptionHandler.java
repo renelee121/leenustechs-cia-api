@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
+import mx.com.leenustechs.ciaApi.business.utils.exceptions.IdempotencyException;
 import jakarta.servlet.http.HttpServletRequest;
 import mx.com.leenustechs.ciaApi.business.utils.exceptions.InvalidPayloadException;
 import mx.com.leenustechs.ciaApi.business.utils.exceptions.KafkaPublicationException;
@@ -17,6 +18,12 @@ import mx.com.leenustechs.ciaApi.business.utils.exceptions.KafkaPublicationExcep
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(IdempotencyException.class)
+    public ResponseEntity<ApiErrorResponse> handleIdempotency(IdempotencyException exception) {
+        return ResponseEntity.status(exception.getStatus()).body(new ApiErrorResponse(
+                exception.getTransactionId(), exception.getCode(), exception.getMessage(), Instant.now()));
+    }
 
     @ExceptionHandler(InvalidPayloadException.class)
     public ResponseEntity<ApiErrorResponse> handleInvalidPayload(
