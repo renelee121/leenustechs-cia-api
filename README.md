@@ -5,7 +5,7 @@ Recibe solicitudes HTTP, aplica idempotencia temporal en Redis y publica el
 primer evento del workflow en Kafka. Responde **202 Accepted después del ACK de
 Kafka**, sin esperar la ejecución del workflow completo.
 
-Este README sigue la organización y terminología de **CIA DeepWiki**: visión
+Este README sigue la organización y terminología de [wiki del proyecto](https://deepwiki.com/renelee121/leenustechs-cia-api): visión
 general, API MS, State Machine, idempotencia Redis, contratos, riesgos y operación.
 Describe la implementación de este repositorio; los componentes externos se
 presentan como contexto de la arquitectura descrita en la wiki.
