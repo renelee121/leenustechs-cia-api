@@ -6,6 +6,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
+import mx.com.leenustechs.ciaApi.business.utils.exceptions.KafkaPublicationException;
 
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,23 +37,15 @@ public class KafkaProducerAdapter {
                 "origin-service",
                 applicationName.getBytes(StandardCharsets.UTF_8));
 
-        kafkaTemplate.send(record)
-                .whenComplete((result, ex) -> {
-
-                    if (ex != null) {
-                        log.error(
-                                "Error publishing Kafka event. topic: {}, key: {}",
-                                topic,
-                                key,
-                                ex);
-                        return;
-                    }
-
-                    log.debug(
-                            "Kafka event published. topic: {}, partition: {}, offset: {}",
-                            topic,
-                            result.getRecordMetadata().partition(),
-                            result.getRecordMetadata().offset());
-                });
+        try {
+            kafkaTemplate.send(record).get(35, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new KafkaPublicationException(key, ex);
+        } catch (ExecutionException ex) {
+            throw new KafkaPublicationException(key, ex.getCause());
+        } catch (Exception ex) {
+            throw new KafkaPublicationException(key, ex);
+        }
     }
 }

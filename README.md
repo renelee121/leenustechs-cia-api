@@ -118,3 +118,30 @@ leenustechs-cia-api
    └─ test-classes
 
 ```
+## Publicación Kafka y respuestas HTTP
+
+La API requiere Java 21, Maven 3.9.16 o superior y las variables
+`SPRING_APPLICATION_NAME`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_USERNAME` y
+`KAFKA_PASSWORD`. Kafka utiliza SASL_SSL con SCRAM-SHA-512; las credenciales
+no se registran en los logs.
+
+`POST /config-api/v1/activation/login` requiere un `payload` que sea un objeto
+JSON. Un payload ausente, nulo, escalar o array devuelve `400 INVALID_PAYLOAD`
+sin publicar. El evento conserva el payload recibido; la respuesta añade
+`status: "success"` a una copia independiente.
+
+La respuesta `202` se envía después del ACK de Kafka con `acks=all`. La
+publicación limita la espera de metadatos/buffer a 5 segundos y la entrega a
+30 segundos; el adaptador espera el resultado hasta 35 segundos. Un fallo,
+interrupción o timeout devuelve `503 KAFKA_PUBLICATION_UNCONFIRMED`. Un timeout
+no demuestra que el evento no llegó: los reintentos HTTP pueden duplicarlo y
+requieren una estrategia de idempotencia. El ACK tampoco confirma que un
+consumidor haya procesado el evento.
+
+Ejecutar las pruebas y empaquetar con `mvn verify`. Las pruebas cubren el contrato
+HTTP y la confirmación mediante un productor simulado; no sustituyen una prueba
+contra un broker real.
+
+Limitación existente: Spring Boot 4.1.0 y Spring Cloud 2025.1.1 no superan la
+verificación de compatibilidad al arrancar (Spring Cloud requiere Boot 4.0.x).
+Debe alinearse esa combinación antes de desplegar; no se deshabilita el verificador.

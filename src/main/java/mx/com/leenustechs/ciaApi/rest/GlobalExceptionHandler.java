@@ -10,10 +10,29 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
+import jakarta.servlet.http.HttpServletRequest;
+import mx.com.leenustechs.ciaApi.business.utils.exceptions.InvalidPayloadException;
+import mx.com.leenustechs.ciaApi.business.utils.exceptions.KafkaPublicationException;
 
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(InvalidPayloadException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidPayload(
+            InvalidPayloadException exception, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(new ApiErrorResponse(
+                (String) request.getAttribute("transactionId"), "INVALID_PAYLOAD",
+                exception.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler(KafkaPublicationException.class)
+    public ResponseEntity<ApiErrorResponse> handleKafkaPublication(KafkaPublicationException exception) {
+        log.error("Kafka publication unconfirmed. transactionId={}", exception.getTransactionId());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new ApiErrorResponse(
+                exception.getTransactionId(), "KAFKA_PUBLICATION_UNCONFIRMED",
+                exception.getMessage(), Instant.now()));
+    }
 
     @ExceptionHandler(EmptyOperationResponseException.class)
     public ResponseEntity<ApiErrorResponse> handleEmptyOperationResponse(

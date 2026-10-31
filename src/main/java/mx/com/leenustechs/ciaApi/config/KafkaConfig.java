@@ -13,17 +13,16 @@ import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 
-import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.ObjectMapper;
 import mx.com.leenustechs.ciaApi.business.utils.commons.CustomSerializer;
 
-@Slf4j
 @EnableKafka
 @Configuration
 public class KafkaConfig {
 
     private static final String SECURITY_PROTOCOL = "SASL_SSL";
     private static final String SASL_MECHANISM = "SCRAM-SHA-512";
-    public static final String SASL_JAAS_CONFIG = "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"{0}\" password=\"{1}\";";
+    public static final String SASL_JAAS_CONFIG = "org.apache.kafka.common.security.scram.ScramLoginModule required username=\"%s\" password=\"%s\";";
 
     private final String kafkaUsername;
     private final String kafkaPassword;
@@ -40,25 +39,31 @@ public class KafkaConfig {
     }
     
     public String getSaslJaasConfig() {
-        String jaasConfig = String.format(SASL_JAAS_CONFIG, kafkaUsername, kafkaPassword);
-        log.info("SASL JAAS Config: {}", jaasConfig);
-        return jaasConfig;
+        return String.format(SASL_JAAS_CONFIG, escape(kafkaUsername), escape(kafkaPassword));
+    }
+
+    private static String escape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     @Bean
-    public ProducerFactory<String, Object> producerFactory() {
+    public ProducerFactory<String, Object> producerFactory(ObjectMapper objectMapper) {
         Map<String, Object> configProps = new HashMap<>();
         configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, CustomSerializer.class);
+        configProps.put(ProducerConfig.ACKS_CONFIG, "all");
+        configProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, 5000);
+        configProps.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 30000);
+        configProps.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 10000);
         configProps.put("security.protocol", SECURITY_PROTOCOL);
         configProps.put("sasl.mechanism", SASL_MECHANISM);
         configProps.put("sasl.jaas.config", getSaslJaasConfig());
-        return new DefaultKafkaProducerFactory<>(configProps);
+        return new DefaultKafkaProducerFactory<>(configProps, StringSerializer::new,
+                () -> new CustomSerializer(objectMapper));
     }
 
     @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+    public KafkaTemplate<String, Object> kafkaTemplate(ProducerFactory<String, Object> producerFactory) {
+        return new KafkaTemplate<>(producerFactory);
     }
 }
