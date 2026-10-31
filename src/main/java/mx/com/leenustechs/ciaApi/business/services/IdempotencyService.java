@@ -22,7 +22,7 @@ public class IdempotencyService {
     private static final DefaultRedisScript<String> CLAIM = new DefaultRedisScript<>("""
             local current = redis.call('GET', KEYS[1])
             if current then return current end
-            redis.call('SET', KEYS[1], ARGV[1], 'PX', 30000)
+            redis.call('SET', KEYS[1], ARGV[1], 'PX', 60000)
             return ''
             """, String.class);
     private static final DefaultRedisScript<Long> COMPLETE = new DefaultRedisScript<>("""

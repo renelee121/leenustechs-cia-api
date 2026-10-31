@@ -40,7 +40,7 @@ sequenceDiagram
     participant State as State Machine
     participant RTDB as Firebase RTDB
     TPV->>API: POST login + Idempotency-Key
-    API->>Redis: CLAIM atómico, TTL 30 s
+    API->>Redis: CLAIM atómico, TTL 60 s
     API->>Kafka: Evento LOGIN en lobby
     Kafka-->>API: ACK
     API->>Redis: COMPLETE con KEEPTTL
@@ -164,13 +164,13 @@ cia-api:idempotency:login:<Idempotency-Key>
 | `UNCONFIRMED` | La publicación falló o su entrega es incierta. |
 | Expirado | La entrada desaparece y vuelve a poder adquirirse. |
 
-CLAIM consulta y adquiere la clave atómicamente con `SET PX 30000`. La entrada
+CLAIM consulta y adquiere la clave atómicamente con `SET PX 60000`. La entrada
 guarda `transactionId`, `state`, `payload` y, en caso de éxito, `response`.
 COMPLETE compara el valor pendiente exacto antes de escribir con `KEEPTTL`.
 Una petición antigua no puede sobrescribir una entrada nueva ni recrear la
 suya después de expirar.
 
-El TTL es **fijo: 30 segundos desde el primer CLAIM**. Los reintentos, el ACK y
+El TTL es **fijo: 60 segundos desde el primer CLAIM**. Los reintentos, el ACK y
 los cambios de estado no lo renuevan. Mientras la entrada exista, el mismo
 payload con estado `COMPLETED` reproduce el 202 y el cuerpo originales sin
 publicar. Un orden distinto de propiedades JSON no cambia la identidad del
@@ -184,7 +184,7 @@ por todas las réplicas, tener capacidad suficiente y usar `noeviction`.
 
 | Situación | Alcance real |
 | --- | --- |
-| TTL de 30 s frente a espera del ACK de hasta 35 s | Puede existir un segundo CLAIM mientras la primera petición aún espera. |
+| TTL de 60 s frente a espera del ACK de hasta 35 s | La ventana cubre la espera configurada del ACK y el posible bloqueo de `send()` de hasta 5 s; después del TTL, un reintento puede publicar nuevamente. |
 | COMPLETE devuelve `0` por expiración o cambio de propietario | `save()` no inspecciona ese retorno; puede responder 202 tras ACK sin haber cacheado la respuesta. |
 | Claves sin aislamiento por tenant/TPV | El prefijo es global para login; reutilizar una clave entre clientes puede causar conflictos o replay de una respuesta con el mismo payload. |
 | Redis falla antes de adquirir la clave | La API devuelve 503 sin publicar. |

@@ -131,13 +131,13 @@ class IdempotencyServiceTest {
     }
 
     @Test
-    void claimHasThirtySecondTtlAndCompletionDoesNotRenewIt() {
+    void claimHasSixtySecondTtlAndCompletionDoesNotRenewIt() {
         String key = UUID.randomUUID().toString();
         service().executeLogin(key, mapper.createObjectNode(), id -> {
             long initialTtl = server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS);
-            assertTrue(initialTtl > 29000 && initialTtl <= 30000,
-                    "A new claim must start with a 30-second TTL");
-            // Simulate time consumed by Kafka without making the suite wait 25 seconds.
+            assertTrue(initialTtl > 59000 && initialTtl <= 60000,
+                    "A new claim must start with a 60-second TTL");
+            // Simulate time consumed by Kafka without making the suite wait 55 seconds.
             server.redis.expire(redisKey(key), Duration.ofSeconds(5));
             return response(id);
         });
@@ -227,6 +227,6 @@ class IdempotencyServiceTest {
 
     private void assertTtl(String key) {
         long ttl = server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS);
-        assertTrue(ttl > 0 && ttl <= 30000, "Every state must expire within 30 seconds");
+        assertTrue(ttl > 0 && ttl <= 60000, "Every state must expire within 60 seconds");
     }
 }
