@@ -25,15 +25,25 @@ import static org.mockito.Mockito.*;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.application.name=cia-api-test",
         "kafka.username=", "kafka.password=", "kafka.bootstrap.servers=",
-        "spring.datasource.url=jdbc:h2:mem:readiness;DB_CLOSE_DELAY=-1",
-        "spring.datasource.username=sa", "spring.datasource.password=",
         "management.health.kafka.enabled=false"
 })
 class ApplicationReadinessTest {
+    private static final RedisTestServer server = RedisTestServer.start();
+
+    @org.springframework.test.context.DynamicPropertySource
+    static void redisProperties(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", () -> "127.0.0.1");
+        registry.add("spring.data.redis.port", () -> server.port);
+        registry.add("spring.data.redis.username", () -> "");
+        registry.add("spring.data.redis.password", () -> "");
+        registry.add("spring.data.redis.ssl.enabled", () -> false);
+    }
+
+    @org.junit.jupiter.api.AfterAll
+    static void stopRedis() { server.close(); }
+
     @Autowired private Environment environment;
     @Autowired private JsonMapper mapper;
-    @Autowired private mx.com.leenustechs.ciaApi.business.services.IdempotencyService idempotency;
-    @Autowired private org.springframework.transaction.PlatformTransactionManager transactionManager;
     @MockitoBean private KafkaTemplate<String, Object> template;
 
     private URI uri(String path) {
@@ -85,25 +95,6 @@ class ApplicationReadinessTest {
                     mapper.readTree(retry.body()).get("transactionId"));
             verify(template, times(1)).send(any(ProducerRecord.class));
         }
-    }
-
-    @Test
-    void outerTransactionRollbackCannotReleasePublishedKey() {
-        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
-        String key = UUID.randomUUID().toString();
-        var payload = mapper.createObjectNode();
-        var published = new java.util.concurrent.atomic.AtomicReference<
-                mx.com.leenustechs.ciaApi.models.responses.CommonModelResponse>();
-        assertThrows(IllegalStateException.class, () -> transaction.execute(status -> {
-            published.set(idempotency.executeLogin(key, payload, id ->
-                    new mx.com.leenustechs.ciaApi.models.responses.CommonModelResponse(id, "CIA_API",
-                            mx.com.leenustechs.ciaApi.models.types.OperationType.LOGIN, payload)));
-            throw new IllegalStateException("rollback unrelated transaction");
-        }));
-        assertEquals(published.get(), idempotency.executeLogin(key, payload, id -> {
-            fail("Outer rollback must not erase the committed claim");
-            return null;
-        }));
     }
 
 }

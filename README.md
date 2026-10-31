@@ -120,10 +120,10 @@ leenustechs-cia-api
 ```
 ## Publicación Kafka y respuestas HTTP
 
-La API requiere Java 21, Maven 3.9.16 o superior y las variables
-`SPRING_APPLICATION_NAME`, `KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_USERNAME` y
-`KAFKA_PASSWORD`. Kafka utiliza SASL_SSL con SCRAM-SHA-512; las credenciales
-no se registran en los logs.
+La API requiere Java 21, Maven 3.9.16 o superior, Redis 6 o superior y las
+variables `SPRING_APPLICATION_NAME`, `KAFKA_BOOTSTRAP_SERVERS`,
+`KAFKA_USERNAME` y `KAFKA_PASSWORD`. Kafka utiliza SASL_SSL con SCRAM-SHA-512;
+las credenciales no se registran en los logs.
 
 `POST /config-api/v1/activation/login` requiere un `payload` que sea un objeto
 JSON. Un payload ausente, nulo, escalar o array devuelve `400 INVALID_PAYLOAD`
@@ -134,54 +134,73 @@ La respuesta `202` se envía después del ACK de Kafka con `acks=all`. La
 publicación limita la espera de metadatos/buffer a 5 segundos y la entrega a
 30 segundos; el adaptador espera el resultado hasta 35 segundos. Un fallo,
 interrupción o timeout devuelve `503 KAFKA_PUBLICATION_UNCONFIRMED`. Un timeout
-no demuestra que el evento no llegó. El registro persistente impide republicarlo
-automáticamente con la misma clave; el ACK tampoco confirma que un consumidor
+no demuestra que el evento no llegó. El ACK tampoco confirma que un consumidor
 haya procesado el evento.
 
-### Idempotencia HTTP
+### Idempotencia temporal en Redis: TTL fijo de 30 segundos
 
 Todas las solicitudes de login deben incluir `Idempotency-Key`: una clave única
 por operación lógica (se recomienda un UUID aleatorio), de 1 a 128 caracteres
-ASCII entre letras, dígitos, `.`, `_`, `:` y `-`. El cliente debe guardar la
-clave antes del primer envío y reutilizarla con el mismo payload en todos los
-reintentos. Sin clave válida, la API devuelve `400 INVALID_IDEMPOTENCY_KEY`.
+ASCII entre letras, dígitos, `.`, `_`, `:` y `-`. El cliente debe reutilizar
+la clave y el mismo payload al reintentar. Sin clave válida, la API devuelve
+`400 INVALID_IDEMPOTENCY_KEY`.
+
+El primer intento reclama atómicamente `cia-api:idempotency:login:<clave>` en
+Redis con **TTL de 30 segundos desde ese momento**. La entrada guarda el payload,
+el `transactionId`, el estado y, si hay éxito, la respuesta. Las operaciones Lua
+son atómicas entre réplicas. Ni los reintentos ni los cambios de estado renuevan
+el TTL: se conserva con `KEEPTTL`. Una operación antigua no puede sobrescribir
+una entrada nueva ni recrear su entrada si terminó después de la expiración.
+
+Mientras la entrada exista:
 
 | Reintento con la misma clave | Resultado |
 | --- | --- |
-| Mismo payload, publicación confirmada y respuesta persistida | Repite el `202` y el cuerpo original, incluido `transactionId`, sin publicar |
+| Mismo payload y respuesta confirmada guardada | Repite el `202` y el cuerpo original, incluido `transactionId`, sin publicar |
 | Payload diferente | `409 IDEMPOTENCY_KEY_CONFLICT` |
-| Solicitud todavía en curso o interrumpida antes de persistir el resultado | `409 IDEMPOTENCY_IN_PROGRESS`, sin publicar |
+| Publicación en curso | `409 IDEMPOTENCY_IN_PROGRESS`, sin publicar |
 | Entrega fallida o incierta | `503 KAFKA_PUBLICATION_UNCONFIRMED`, sin publicar |
+| Redis no disponible | `503 IDEMPOTENCY_STORE_UNAVAILABLE`; si no se pudo reclamar la clave, no se publica |
 
-El orden de las propiedades de un objeto JSON no cambia la identidad del
-payload. El `transactionId` del cuerpo de entrada no determina la idempotencia:
-el servidor crea y persiste un identificador estable por clave. El registro se
-reclama con una restricción única en la base antes de publicar en Kafka; si la
-base no está disponible, no se publica.
+El orden de propiedades de un objeto JSON no cambia la identidad del payload.
+El `transactionId` del cuerpo no determina la idempotencia: el servidor genera
+uno por reclamación.
 
-Desarrollo usa H2 en `./data/cia-api` (directorio ignorado por Git). Conservar ese
-directorio entre reinicios; no usar una base en memoria para el servicio real.
-Para producción y varias réplicas, configurar **la misma base PostgreSQL** en
-todas las instancias mediante `CIA_DATABASE_URL` (URL JDBC),
-`CIA_DATABASE_USERNAME` y `CIA_DATABASE_PASSWORD`. El directorio H2 local no
-coordina réplicas con discos independientes. Proporcionar contraseñas mediante la
-configuración segura del despliegue. `schema.sql` crea la tabla si no existe; la
-cuenta de arranque requiere permiso de creación o una migración previa equivalente.
+**Al vencer los 30 segundos, la misma clave vuelve a aceptarse como una operación
+nueva y puede publicar otro evento**, incluso si el intento anterior sigue en
+curso o su entrega fue incierta. Esta protección es temporal; no garantiza
+deduplicación fuera de la ventana ni procesamiento exactamente una vez. La
+pérdida de datos o expulsión anticipada de claves de Redis también acorta la
+protección. Para respetar la ventana, usar Redis compartido por todas las
+réplicas, dimensionado adecuadamente y con política `noeviction`.
 
-No hay expiración ni eliminación automática de claves. El registro guarda
-payloads y respuestas: requiere almacenamiento persistente, acceso restringido y
-una política de conservación adecuada. El cliente no debe cambiar de clave para
-reintentar una operación incierta. Tras una caída entre el envío y el guardado
-de la respuesta, un operador debe reconciliar el registro con el evento Kafka
-usando su `transaction_id`; no borrar ni liberar una clave incierta
-automáticamente. Esta solución evita publicaciones duplicadas por reintentos,
-pero no ofrece una transacción atómica entre Kafka y la base ni procesamiento
-exactamente una vez en los consumidores.
+### Configuración y pruebas
 
-Ejecutar las pruebas y empaquetar con `mvn verify`. Las pruebas cubren arranque y HTTP real,
-reintentos, concurrencia, persistencia tras reapertura de la base, fallos y
-confirmación mediante un productor simulado. No sustituyen una prueba contra un
-broker real ni la validación del PostgreSQL del despliegue.
+Redis local usa `localhost:6379`. Se puede configurar con:
+
+| Variable | Valor predeterminado |
+| --- | --- |
+| `CIA_REDIS_HOST` | `localhost` |
+| `CIA_REDIS_PORT` | `6379` |
+| `CIA_REDIS_USERNAME` | vacío |
+| `CIA_REDIS_PASSWORD` | vacío |
+| `CIA_REDIS_SSL` | `false` |
+
+Proporcionar credenciales mediante la configuración segura del despliegue.
+Configurar TLS cuando el servicio Redis lo requiera. Los tiempos de conexión y
+comando son de 2 segundos. El usuario Redis necesita permisos para ejecutar
+scripts Lua y leer/escribir las claves del prefijo indicado.
+
+Ya no se utilizan JDBC, H2, PostgreSQL, migraciones ni variables
+`CIA_DATABASE_*` para la idempotencia. Los datos de instalaciones anteriores no
+se migran a Redis y no se borran automáticamente.
+
+Ejecutar `mvn clean verify` con `redis-server` disponible en `PATH` o con
+`REDIS_SERVER_BINARY` apuntando al ejecutable. Las pruebas arrancan procesos
+Redis reales y aislados en puertos libres, sin persistencia y enlazados a
+loopback; no usan ni vacían el Redis de la aplicación. Cubren arranque y HTTP
+real, concurrencia, replay, TTL, expiración, finalización tardía y errores.
+Kafka se simula en las pruebas; falta validación contra un broker real.
 
 ### Compatibilidad Spring
 
