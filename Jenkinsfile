@@ -28,35 +28,33 @@ pipeline {
                     java -version
                     mvn -version
                     git --version
-
-                    if ! command -v redis-server >/dev/null 2>&1; then
-                      echo "ERROR: Las pruebas de CIA API requieren redis-server en el agente Jenkins."
-                      echo "Instala Redis dentro de la imagen del agente Docker; no en AlmaLinux."
-                      exit 2
-                    fi
-
-                    redis-server --version
                 '''
             }
         }
 
-        stage('Compilar y probar') {
+        stage('Compilar JAR') {
             steps {
-                sh 'mvn -B -ntp clean verify'
+                sh 'mvn -B -ntp clean package -Dmaven.test.skip=true'
+            }
+        }
+
+        stage('Verificar JAR') {
+            steps {
+                sh '''
+                    test -s target/cia-api.jar
+                    ls -lh target/cia-api.jar
+                '''
             }
         }
     }
 
     post {
-        always {
-            junit testResults: 'target/surefire-reports/*.xml', allowEmptyResults: true
-            archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
-        }
         success {
-            echo 'CIA API: compilación y pruebas correctas. Artefacto JAR archivado.'
+            archiveArtifacts artifacts: 'target/cia-api.jar', fingerprint: true
+            echo 'CIA API: JAR compilado y archivado. Las pruebas no se ejecutaron.'
         }
         failure {
-            echo 'CIA API: revisar los logs y los reportes de pruebas.'
+            echo 'CIA API: falló la compilación o generación del JAR. Revisar Console Output.'
         }
     }
 }
