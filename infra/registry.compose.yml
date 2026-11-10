@@ -1,0 +1,34 @@
+services:
+  registry:
+    image: registry:3
+    restart: unless-stopped
+    environment:
+      REGISTRY_HTTP_ADDR: "0.0.0.0:5000"
+      REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: "/var/lib/registry"
+      REGISTRY_AUTH: "htpasswd"
+      REGISTRY_AUTH_HTPASSWD_REALM: "LeenusTechs Docker Registry"
+      REGISTRY_AUTH_HTPASSWD_PATH: "/auth/htpasswd"
+    volumes:
+      - registry_data:/var/lib/registry
+      - registry_auth:/auth:ro
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  edge:
+    external: true
+    name: platform_edge
+
+volumes:
+  registry_data:
+    name: platform_registry_data
+  registry_auth:
+    external: true
+    name: platform_registry_auth
