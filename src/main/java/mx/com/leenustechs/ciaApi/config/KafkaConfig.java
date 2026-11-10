@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -27,15 +28,21 @@ public class KafkaConfig {
     private final String kafkaUsername;
     private final String kafkaPassword;
     private final String kafkaBootstrapServers;
+    private final String kafkaSslTruststoreType;
+    private final String kafkaSslTruststoreLocation;
 
     public KafkaConfig(
         @Value("${kafka.username}") String kafkaUsername,
         @Value("${kafka.password}") String kafkaPassword,
-        @Value("${kafka.bootstrap.servers}") String kafkaBootstrapServers
+        @Value("${kafka.bootstrap.servers}") String kafkaBootstrapServers,
+        @Value("${kafka.ssl.truststore.type}") String kafkaSslTruststoreType,
+        @Value("${kafka.ssl.truststore.location}") String kafkaSslTruststoreLocation
     ){
         this.kafkaUsername = kafkaUsername;
         this.kafkaPassword = kafkaPassword;
         this.kafkaBootstrapServers = kafkaBootstrapServers;
+        this.kafkaSslTruststoreType = kafkaSslTruststoreType;
+        this.kafkaSslTruststoreLocation = kafkaSslTruststoreLocation;
     }
     
     public String getSaslJaasConfig() {
@@ -58,6 +65,8 @@ public class KafkaConfig {
         configProps.put("security.protocol", SECURITY_PROTOCOL);
         configProps.put("sasl.mechanism", SASL_MECHANISM);
         configProps.put("sasl.jaas.config", getSaslJaasConfig());
+        configProps.put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, kafkaSslTruststoreType);
+        configProps.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, kafkaSslTruststoreLocation);
         return new DefaultKafkaProducerFactory<>(configProps, StringSerializer::new,
                 () -> new CustomSerializer(objectMapper));
     }
