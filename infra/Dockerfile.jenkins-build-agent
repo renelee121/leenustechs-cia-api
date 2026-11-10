@@ -1,0 +1,6 @@
+# Agente Jenkins solo con el cliente BuildKit (buildctl).
+# No usa el socket Docker del host.
+FROM moby/buildkit:rootless AS buildkit_client
+
+FROM jenkins/inbound-agent:jdk21
+COPY --from=buildkit_client /usr/bin/buildctl /usr/local/bin/buildctl
