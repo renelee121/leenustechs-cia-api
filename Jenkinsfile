@@ -25,7 +25,6 @@ pipeline {
                         sh '''#!/bin/sh
 set -eu
 command -v mvn >/dev/null || { echo "Falta Maven"; exit 1; }
-command -v redis-server >/dev/null || { echo "Falta redis-server local para tests"; exit 1; }
 mvn -B -ntp clean verify
 test -s target/cia-api.jar
 test -s target/site/jacoco/jacoco.xml

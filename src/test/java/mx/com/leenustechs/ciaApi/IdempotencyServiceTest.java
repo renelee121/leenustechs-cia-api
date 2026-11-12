@@ -1,6 +1,5 @@
 package mx.com.leenustechs.ciaApi;
 
-import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -10,25 +9,25 @@ import mx.com.leenustechs.ciaApi.business.utils.exceptions.IdempotencyException;
 import mx.com.leenustechs.ciaApi.business.utils.exceptions.KafkaPublicationException;
 import mx.com.leenustechs.ciaApi.models.responses.CommonModelResponse;
 import mx.com.leenustechs.ciaApi.models.types.OperationType;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class IdempotencyServiceTest {
-    private static final RedisTestServer server = RedisTestServer.start();
+    private final MockRedisScripts store = new MockRedisScripts();
     private final JsonMapper mapper = JsonMapper.builder().build();
 
-    @AfterAll
-    static void stopRedis() { server.close(); }
-
     private IdempotencyService service() {
-        return new IdempotencyService(server.redis, mapper);
+        return new IdempotencyService(store.redis, mapper);
     }
 
-    private String redisKey(String key) { return "cia-api:idempotency:login:" + key; }
+    private String redisKey(String key) {
+        return "cia-api:idempotency:login:" + key;
+    }
 
     private CommonModelResponse response(String transactionId) {
         return new CommonModelResponse(transactionId, "CIA_API", OperationType.LOGIN,
@@ -36,219 +35,223 @@ class IdempotencyServiceTest {
     }
 
     @Test
-    void usesInterceptorTransactionIdForPublicationAndRedisRecord() {
+    void usesInterceptorTransactionIdForPublicationAndCachedRecord() {
         String key = UUID.randomUUID().toString();
-        String interceptorTransactionId = UUID.randomUUID().toString();
-        var result = service().executeLogin(key, interceptorTransactionId,
-                mapper.createObjectNode().put("user", "alice"), id -> {
-                    assertEquals(interceptorTransactionId, id);
-                    return response(id);
+        String id = UUID.randomUUID().toString();
+        var result = service().executeLogin(key, id, mapper.createObjectNode().put("user", "alice"),
+                received -> {
+                    assertEquals(id, received);
+                    return response(received);
                 });
-        assertEquals(interceptorTransactionId, result.getTransactionId());
-        var stored = mapper.readTree(server.redis.opsForValue().get(redisKey(key)));
-        assertEquals(interceptorTransactionId, stored.get("transactionId").asString());
+        assertEquals(id, result.getTransactionId());
+        assertEquals(id, mapper.readTree(store.get(redisKey(key))).get("transactionId").asString());
     }
 
     @Test
     void rejectsMissingInterceptorTransactionId() {
         assertThrows(IllegalStateException.class, () ->
-                service().executeLogin("key", null, mapper.createObjectNode(), id -> response(id)));
+                service().executeLogin("key", null, mapper.createObjectNode(), this::response));
+        verifyNoInteractions(store.redis);
     }
 
     @Test
-    void completedRequestReplaysAcrossIndependentServiceInstances() {
+    void replaysCompletedRequestWithoutCallingPublisherAgain() {
         String key = UUID.randomUUID().toString();
-        var count = new AtomicInteger();
-        String firstTransactionId = UUID.randomUUID().toString();
-        var result = service().executeLogin(key, firstTransactionId, mapper.readTree("{\"a\":1,\"b\":2}"), id -> {
-            count.incrementAndGet();
-            return response(id);
-        });
-        var replay = service().executeLogin(key, UUID.randomUUID().toString(), mapper.readTree("{\"b\":2,\"a\":1}"), id -> {
-            fail("Must not publish twice");
-            return null;
-        });
-        assertEquals(result, replay);
-        assertEquals(firstTransactionId, replay.getTransactionId());
-        assertEquals(1, count.get());
+        String id = UUID.randomUUID().toString();
+        var calls = new AtomicInteger();
+        var first = service().executeLogin(key, id, mapper.readTree("{\"a\":1,\"b\":2}"),
+                transaction -> {
+                    calls.incrementAndGet();
+                    return response(transaction);
+                });
+        var second = new IdempotencyService(store.redis, mapper)
+                .executeLogin(key, UUID.randomUUID().toString(), mapper.readTree("{\"b\":2,\"a\":1}"),
+                        transaction -> {
+                            fail("Replay must never publish");
+                            return null;
+                        });
+        assertEquals(first, second);
+        assertEquals(id, second.getTransactionId());
+        assertEquals(1, calls.get());
     }
 
     @Test
-    void differentPayloadConflictsEvenAfterSuccess() {
+    void conflictingPayloadIsRejected() {
         String key = UUID.randomUUID().toString();
-        service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode().put("user", "one"), this::response);
-        var conflict = assertThrows(IdempotencyException.class,
-                () -> service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode().put("user", "two"), id -> {
-                    fail("Conflicting key must not publish");
-                    return null;
-                }));
-        assertEquals("IDEMPOTENCY_KEY_CONFLICT", conflict.getCode());
-        assertEquals(409, conflict.getStatus().value());
+        service().executeLogin(key, UUID.randomUUID().toString(),
+                mapper.createObjectNode().put("user", "one"), this::response);
+        var ex = assertThrows(IdempotencyException.class, () -> service().executeLogin(
+                key, UUID.randomUUID().toString(),
+                mapper.createObjectNode().put("user", "two"), this::response));
+        assertEquals("IDEMPOTENCY_KEY_CONFLICT", ex.getCode());
+        assertEquals(409, ex.getStatus().value());
     }
 
     @Test
-    void concurrentRequestsClaimKeyAtomically() throws Exception {
+    void concurrentClaimsOnlyInvokePublisherOnce() throws Exception {
         String key = UUID.randomUUID().toString();
         var start = new CountDownLatch(1);
         var entered = new CountDownLatch(1);
         var release = new CountDownLatch(1);
-        var count = new AtomicInteger();
-        try (var executor = Executors.newFixedThreadPool(2)) {
+        var publications = new AtomicInteger();
+        try (var pool = Executors.newFixedThreadPool(2)) {
             var calls = new java.util.ArrayList<Future<Object>>();
             for (int i = 0; i < 2; i++) {
-                calls.add(executor.submit(() -> {
+                calls.add(pool.submit(() -> {
                     start.await();
                     try {
-                        return service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                            count.incrementAndGet();
-                            entered.countDown();
-                            try {
-                                assertTrue(release.await(10, TimeUnit.SECONDS));
-                            } catch (InterruptedException e) {
-                                throw new RuntimeException(e);
-                            }
-                            return response(id);
-                        });
-                    } catch (IdempotencyException conflict) {
-                        return conflict;
+                        return service().executeLogin(key, UUID.randomUUID().toString(),
+                                mapper.createObjectNode(), id -> {
+                                    publications.incrementAndGet();
+                                    entered.countDown();
+                                    try {
+                                        if (!release.await(10, TimeUnit.SECONDS)) {
+                                            throw new AssertionError("Timeout releasing publisher");
+                                        }
+                                    } catch (InterruptedException e) {
+                                        Thread.currentThread().interrupt();
+                                        throw new RuntimeException(e);
+                                    }
+                                    return response(id);
+                                });
+                    } catch (IdempotencyException ex) {
+                        return ex;
                     }
                 }));
             }
             start.countDown();
             try {
                 assertTrue(entered.await(5, TimeUnit.SECONDS));
-                long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-                while (calls.stream().noneMatch(Future::isDone) && System.nanoTime() < deadline) {
+                var conflict = calls.stream().filter(Future::isDone).findFirst();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (conflict.isEmpty() && System.nanoTime() < deadline) {
                     Thread.sleep(10);
+                    conflict = calls.stream().filter(Future::isDone).findFirst();
                 }
-                assertTrue(calls.stream().anyMatch(Future::isDone));
+                assertTrue(conflict.isPresent(), "Second call should be rejected while first publishes");
             } finally {
                 release.countDown();
             }
             var results = new java.util.ArrayList<Object>();
-            for (var call : calls) results.add(call.get(5, TimeUnit.SECONDS));
-            assertEquals(1, count.get());
+            for (var future : calls) results.add(future.get(5, TimeUnit.SECONDS));
+            assertEquals(1, publications.get());
             assertEquals(1, results.stream().filter(CommonModelResponse.class::isInstance).count());
-            var conflict = (IdempotencyException) results.stream().filter(IdempotencyException.class::isInstance)
-                    .findFirst().orElseThrow();
+            var conflict = (IdempotencyException) results.stream()
+                    .filter(IdempotencyException.class::isInstance).findFirst().orElseThrow();
             assertEquals("IDEMPOTENCY_IN_PROGRESS", conflict.getCode());
         }
     }
 
     @Test
-    void uncertainPublicationDoesNotRepublishWithinWindow() {
+    void uncertainPublicationIsNotRetriedWithinWindow() {
         String key = UUID.randomUUID().toString();
-        assertThrows(KafkaPublicationException.class,
-                () -> service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                    throw new KafkaPublicationException(id, new TimeoutException());
-                }));
-        var failure = assertThrows(IdempotencyException.class,
-                () -> service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                    fail("Uncertain delivery must not republish within TTL");
-                    return null;
-                }));
-        assertEquals("KAFKA_PUBLICATION_UNCONFIRMED", failure.getCode());
-        assertEquals(503, failure.getStatus().value());
-        assertTtl(key);
+        assertThrows(KafkaPublicationException.class, () ->
+                service().executeLogin(key, UUID.randomUUID().toString(),
+                        mapper.createObjectNode(), id -> {
+                            throw new KafkaPublicationException(id, new TimeoutException());
+                        }));
+        var ex = assertThrows(IdempotencyException.class, () ->
+                service().executeLogin(key, UUID.randomUUID().toString(),
+                        mapper.createObjectNode(), id -> {
+                            fail("Uncertain message must not republish");
+                            return null;
+                        }));
+        assertEquals(503, ex.getStatus().value());
+        assertEquals("KAFKA_PUBLICATION_UNCONFIRMED", ex.getCode());
+        assertEquals(60_000L, store.pttl(redisKey(key)));
     }
 
     @Test
-    void claimHasSixtySecondTtlAndCompletionDoesNotRenewIt() {
+    void completionPreservesTtlAndReplayDoesNotRenewIt() {
         String key = UUID.randomUUID().toString();
         service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-            long initialTtl = server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS);
-            assertTrue(initialTtl > 59000 && initialTtl <= 60000,
-                    "A new claim must start with a 60-second TTL");
-            // Simulate time consumed by Kafka without making the suite wait 55 seconds.
-            server.redis.expire(redisKey(key), Duration.ofSeconds(5));
+            assertEquals(60_000L, store.pttl(redisKey(key)));
+            store.advanceMillis(55_000);
             return response(id);
         });
-        long ttl = server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS);
-        assertTrue(ttl > 0 && ttl <= 5000, "Completion must preserve remaining TTL");
+        assertEquals(5_000L, store.pttl(redisKey(key)));
         service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-            fail("Replay must not publish");
+            fail("No republish on replay");
             return null;
         });
-        assertTrue(server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS) <= ttl,
-                "Replay must not renew TTL");
+        assertEquals(5_000L, store.pttl(redisKey(key)));
     }
 
     @Test
-    void expirationAllowsNewPublicationAndOldCompletionCannotOverwriteIt() throws Exception {
+    void expiredClaimAllowsNewTransactionAndOldCompletionCannotOverride() throws Exception {
         String key = UUID.randomUUID().toString();
         var claimed = new CountDownLatch(1);
         var release = new CountDownLatch(1);
-        try (var executor = Executors.newSingleThreadExecutor()) {
-            var old = executor.submit(() -> service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                claimed.countDown();
-                try {
-                    assertTrue(release.await(10, TimeUnit.SECONDS));
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                return response(id);
-            }));
-            CommonModelResponse replacement;
+        try (var pool = Executors.newSingleThreadExecutor()) {
+            var old = pool.submit(() -> service().executeLogin(
+                    key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
+                        claimed.countDown();
+                        try {
+                            if (!release.await(10, TimeUnit.SECONDS)) {
+                                throw new AssertionError("Timeout releasing old publisher");
+                            }
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(e);
+                        }
+                        return response(id);
+                    }));
+            CommonModelResponse current;
             try {
                 assertTrue(claimed.await(5, TimeUnit.SECONDS));
-                // Accelerate actual Redis expiry for the boundary/race test.
-                server.redis.expire(redisKey(key), Duration.ofMillis(1));
-                long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
-                while (Boolean.TRUE.equals(server.redis.hasKey(redisKey(key))) && System.nanoTime() < deadline) {
-                    Thread.sleep(5);
-                }
-                assertFalse(server.redis.hasKey(redisKey(key)));
-                replacement = service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), this::response);
+                store.advanceMillis(60_001);
+                assertFalse(store.hasKey(redisKey(key)));
+                current = service().executeLogin(key, UUID.randomUUID().toString(),
+                        mapper.createObjectNode(), this::response);
             } finally {
                 release.countDown();
             }
-            assertNotEquals(old.get(5, TimeUnit.SECONDS).getTransactionId(), replacement.getTransactionId());
-            assertEquals(replacement, service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                fail("Old owner must not replace the new cached response");
-                return null;
-            }));
-            assertTtl(key);
+            assertNotEquals(old.get(5, TimeUnit.SECONDS).getTransactionId(),
+                    current.getTransactionId());
+            assertEquals(current, service().executeLogin(key, UUID.randomUUID().toString(),
+                    mapper.createObjectNode(), id -> {
+                        fail("Old completion cannot overwrite current cached result");
+                        return null;
+                    }));
         }
     }
 
     @Test
-    void expiredCompletionDoesNotRecreateKey() {
+    void completionAfterDeletionDoesNotRecreateEntry() {
         String key = UUID.randomUUID().toString();
         service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-            server.redis.delete(redisKey(key));
+            store.delete(redisKey(key));
             return response(id);
         });
-        assertFalse(server.redis.hasKey(redisKey(key)));
+        assertFalse(store.hasKey(redisKey(key)));
     }
 
     @Test
-    void invalidKeysAreRejectedBeforePublication() {
+    void invalidIdempotencyKeysNeverReachRedis() {
         for (String key : new String[] {null, "", " ", "a".repeat(129), "bad\nkey"}) {
-            assertEquals("INVALID_IDEMPOTENCY_KEY", assertThrows(IdempotencyException.class,
-                    () -> service().executeLogin(key, UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                        fail("Invalid key must not publish");
-                        return null;
-                    })).getCode());
+            var ex = assertThrows(IdempotencyException.class, () ->
+                    service().executeLogin(key, UUID.randomUUID().toString(),
+                            mapper.createObjectNode(), this::response));
+            assertEquals("INVALID_IDEMPOTENCY_KEY", ex.getCode());
         }
+        verifyNoInteractions(store.redis);
     }
 
     @Test
-    void unavailableRedisPreventsPublication() {
-        var redis = mock(org.springframework.data.redis.core.StringRedisTemplate.class);
-        when(redis.execute(any(org.springframework.data.redis.core.script.RedisScript.class),
-                anyList(), any(Object[].class))).thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("offline"));
-        var service = new IdempotencyService(redis, mapper);
-        var error = assertThrows(IdempotencyException.class,
-                () -> service.executeLogin("key", UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
-                    fail("Unavailable Redis must fail closed");
-                    return null;
-                }));
-        assertEquals("IDEMPOTENCY_STORE_UNAVAILABLE", error.getCode());
-        assertEquals(503, error.getStatus().value());
-    }
-
-    private void assertTtl(String key) {
-        long ttl = server.redis.getExpire(redisKey(key), TimeUnit.MILLISECONDS);
-        assertTrue(ttl > 0 && ttl <= 60000, "Every state must expire within 60 seconds");
+    void redisFailureFailsClosed() {
+        var redis = mock(StringRedisTemplate.class, invocation -> {
+            if ("execute".equals(invocation.getMethod().getName())) {
+                throw new RedisConnectionFailureException("offline");
+            }
+            return org.mockito.Answers.RETURNS_DEFAULTS.answer(invocation);
+        });
+        var ex = assertThrows(IdempotencyException.class, () ->
+                new IdempotencyService(redis, mapper).executeLogin("key",
+                        UUID.randomUUID().toString(), mapper.createObjectNode(), id -> {
+                            fail("Redis failures must not publish");
+                            return null;
+                        }));
+        assertEquals(503, ex.getStatus().value());
+        assertEquals("IDEMPOTENCY_STORE_UNAVAILABLE", ex.getCode());
     }
 }

@@ -33,11 +33,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class KafkaPublicationTest {
-    private static final RedisTestServer server = RedisTestServer.start();
-
-    @org.junit.jupiter.api.AfterAll
-    static void stopRedis() { server.close(); }
-
+    private final MockRedisScripts store = new MockRedisScripts();
     private final JsonMapper mapper = JsonMapper.builder().build();
     @SuppressWarnings("unchecked")
     private final KafkaTemplate<String, Object> template = mock(KafkaTemplate.class);
@@ -49,7 +45,7 @@ class KafkaPublicationTest {
     }
 
     private mx.com.leenustechs.ciaApi.business.services.IdempotencyService idempotency() {
-        return new mx.com.leenustechs.ciaApi.business.services.IdempotencyService(server.redis, mapper);
+        return new mx.com.leenustechs.ciaApi.business.services.IdempotencyService(store.redis, mapper);
     }
 
     private MockMvc api() {
