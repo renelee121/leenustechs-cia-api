@@ -1,9 +1,4 @@
-.git
-.gitignore
-.idea
-.vscode
-target
-**/target
-*.log
-.env
-.env.*
+**
+!Dockerfile
+!target/
+!target/cia-api.jar
