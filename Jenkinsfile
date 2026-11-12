@@ -13,6 +13,11 @@ pipeline {
     stages {
         stage('Tests y calidad') {
             agent { label 'java' }
+
+            tools {
+                maven 'Maven-3.10.0'
+            }
+            
             stages {
                 stage('Checkout') {
                     steps {
