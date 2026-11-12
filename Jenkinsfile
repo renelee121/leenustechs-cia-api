@@ -74,7 +74,7 @@ curl -fsS --max-time 30 --config "$cfg" \
 ''',
                                   returnStdout: true
                                 ).trim()
-                                def parsed = new groovy.json.JsonSlurperClassic().parseText(raw)
+                                def parsed = readJSON text: raw, returnPojo: true
                                 def metrics = [:]
                                 (parsed.component?.measures ?: []).each { item ->
                                     metrics[item.metric] = item.value
