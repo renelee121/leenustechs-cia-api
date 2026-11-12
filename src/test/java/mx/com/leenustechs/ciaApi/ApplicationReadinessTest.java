@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "spring.application.name=cia-api-test",
         "kafka.username=", "kafka.password=", "kafka.bootstrap.servers=",
+        "kafka.ssl.truststore.type=PEM", "kafka.ssl.truststore.location=/etc/kafka/ca.crt",
         "management.health.kafka.enabled=false"
 })
 class ApplicationReadinessTest {
@@ -78,7 +79,10 @@ class ApplicationReadinessTest {
             assertEquals(mapper.readTree(first.body()), mapper.readTree(replay.body()));
             assertEquals(409, login(client, key, "{\"payload\":{\"user\":\"bob\"}}").statusCode());
             assertEquals(400, login(client, null, "{\"payload\":{}}").statusCode());
-            verify(template, times(1)).send(any(ProducerRecord.class));
+            var published = org.mockito.ArgumentCaptor.forClass(ProducerRecord.class);
+            verify(template, times(1)).send(published.capture());
+            assertEquals(mapper.readTree(first.body()).get("transactionId").asString(),
+                    published.getValue().key());
         }
     }
     @Test

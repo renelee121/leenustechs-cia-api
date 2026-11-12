@@ -86,13 +86,22 @@ class KafkaPublicationTest {
     void successfulHttpResponseDoesNotMutatePublishedPayload() throws Exception {
         when(template.send(any(ProducerRecord.class)))
                 .thenReturn(CompletableFuture.completedFuture(null));
-        api().perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json")
+        var result = api().perform(post("/config-api/v1/activation/login").header("Idempotency-Key", java.util.UUID.randomUUID().toString()).contentType("application/json")
                 .content("{\"payload\":{\"user\":\"alice\",\"status\":\"original\"}}"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.payload.status").value("success"));
+                .andExpect(jsonPath("$.payload.status").value("success"))
+                .andReturn();
         var record = org.mockito.ArgumentCaptor.forClass(ProducerRecord.class);
         verify(template).send(record.capture());
-        var event = (CommonModel) record.getValue().value();
+        var kafkaRecord = record.getValue();
+        var event = (CommonModel) kafkaRecord.value();
+        String interceptorTransactionId = (String) result.getRequest().getAttribute("transactionId");
+        assertNotNull(interceptorTransactionId);
+        String responseTransactionId = mapper.readTree(result.getResponse().getContentAsString())
+                .get("transactionId").asString();
+        assertEquals(interceptorTransactionId, responseTransactionId);
+        assertEquals(interceptorTransactionId, kafkaRecord.key());
+        assertEquals(interceptorTransactionId, event.getTransactionId());
         assertEquals("original", event.getPayload().get("status").asString());
         assertEquals("cia-api", new String(record.getValue().headers().lastHeader("origin-service").value(),
                 StandardCharsets.UTF_8));
@@ -167,7 +176,7 @@ class KafkaPublicationTest {
     void scramJaasCredentialsAreEscapedAndParseable() {
         String user = "a\"b\\c";
         String password = "p\";\\word";
-        var config = new KafkaConfig(user, password, "localhost:9092");
+        var config = new KafkaConfig(user, password, "localhost:9092", "PEM", "/etc/kafka/ca.crt");
         var properties = new java.util.HashMap<String, Object>();
         properties.put("sasl.jaas.config", new org.apache.kafka.common.config.types.Password(config.getSaslJaasConfig()));
         var context = org.apache.kafka.common.security.JaasContext.loadClientContext(properties);
@@ -179,7 +188,7 @@ class KafkaPublicationTest {
 
     @Test
     void factorySuppliesSerializerWithConfiguredMapper() {
-        var config = new KafkaConfig("test", "test", "localhost:9092");
+        var config = new KafkaConfig("test", "test", "localhost:9092", "PEM", "/etc/kafka/ca.crt");
         var factory = (DefaultKafkaProducerFactory<String, Object>) config.producerFactory(mapper);
         try {
             var serializer = factory.getValueSerializerSupplier().get();

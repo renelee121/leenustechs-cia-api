@@ -1,7 +1,6 @@
 package mx.com.leenustechs.ciaApi.business.services;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.function.Function;
 
 import lombok.RequiredArgsConstructor;
@@ -36,17 +35,19 @@ public class IdempotencyService {
     private final StringRedisTemplate redis;
     private final JsonMapper mapper;
 
-    public CommonModelResponse executeLogin(String key, JsonNode payload,
+    public CommonModelResponse executeLogin(String key, String transactionId, JsonNode payload,
             Function<String, CommonModelResponse> publish) {
+        if (transactionId == null || transactionId.isBlank()) {
+            throw new IllegalStateException("transactionId must be provided by ApiInterceptor");
+        }
         if (key == null || !key.matches("[A-Za-z0-9._:-]{1,128}")) {
             throw new IdempotencyException(HttpStatus.BAD_REQUEST, "INVALID_IDEMPOTENCY_KEY",
-                    "Idempotency-Key is required (1-128 ASCII letters, digits, ., _, :, -)", null);
+                    "Idempotency-Key is required (1-128 ASCII letters, digits, ., _, :, -)", transactionId);
         }
         if (payload == null || !payload.isObject()) {
             throw new InvalidPayloadException();
         }
 
-        String transactionId = UUID.randomUUID().toString();
         String redisKey = PREFIX + key;
         String pending = entry(transactionId, payload, "IN_PROGRESS", null);
         String existing;

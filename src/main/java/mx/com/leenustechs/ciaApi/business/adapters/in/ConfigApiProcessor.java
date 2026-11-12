@@ -24,10 +24,10 @@ public class ConfigApiProcessor {
     private final IdempotencyService idempotencyService;
 
     public CommonModelResponse processLogin(CommonModelRequest requestEvent, HttpServletRequest request) {
-        return idempotencyService.executeLogin(request.getHeader("Idempotency-Key"), requestEvent.getPayload(),
-                transactionId -> {
-                    request.setAttribute("transactionId", transactionId);
-                    CommonModel event = commonModelMapper.toModel(requestEvent, transactionId,
+        String transactionId = (String) request.getAttribute("transactionId");
+        return idempotencyService.executeLogin(request.getHeader("Idempotency-Key"), transactionId,
+                requestEvent.getPayload(), id -> {
+                    CommonModel event = commonModelMapper.toModel(requestEvent, id,
                             PRODUCER, OperationType.LOGIN);
                     return operationTypeService.execute(event);
                 });
