@@ -62,17 +62,17 @@ al flujo externo descrito por la wiki y requieren validación de integración.
 | `ApiInterceptor` | Genera un UUID local a la petición y mide su duración. |
 | `ConfigApi` | Expone `POST /config-api/v1/activation/login`. |
 | `ConfigApiProcessor` | Lee `Idempotency-Key` y delega en `IdempotencyService`. |
-| `IdempotencyService` | Ejecuta CLAIM, replay y COMPLETE; genera el `transactionId` estable durante la ventana. |
+| `IdempotencyService` | Ejecuta CLAIM, replay y COMPLETE; utiliza el `transactionId` recibido de `ApiInterceptor`. |
 | `CommonModelMapper` | Construye el evento con `producer=CIA_API` y `command=LOGIN`. |
 | `CommandDispatcherServiceImpl` | Enruta la operación al caso de uso. |
 | `CommonEventUseCase` | Valida el payload, solicita la publicación y construye una copia para la respuesta. |
 | `KafkaProducerAdapter` | Publica el evento y espera la confirmación de Kafka. |
 | `GlobalExceptionHandler` | Traduce los errores controlados al contrato HTTP. |
 
-El UUID inicial del interceptor identifica la petición HTTP. El identificador
-que devuelve una operación aceptada se genera al ganar el CLAIM y se reutiliza
-al reproducir la respuesta cacheada. El `transactionId` enviado en el cuerpo de
-entrada no determina la idempotencia.
+El UUID generado por el interceptor es el `transactionId` de una operación nueva y
+se transmite a Redis, Kafka y la respuesta. Un reintento idempotente devuelve el
+`transactionId` almacenado de la primera operación. El identificador enviado en
+el cuerpo de entrada no determina la idempotencia.
 
 Código principal: [endpoint HTTP](src/main/java/mx/com/leenustechs/ciaApi/rest/ConfigApi.java),
 [servicio de idempotencia](src/main/java/mx/com/leenustechs/ciaApi/business/services/IdempotencyService.java)
@@ -238,14 +238,9 @@ SQL de instalaciones anteriores no se migran ni se borran automáticamente.
 
 ### Ejecución local
 
-Para desarrollo local, iniciar Redis en otra terminal:
-
-```sh
-redis-server --bind 127.0.0.1 --port 6379 --save '' --appendonly no --protected-mode yes --maxmemory-policy noeviction
-```
-
-Este comando no configura persistencia ni autenticación y se limita a loopback;
-para un Redis externo, usar las variables y controles del despliegue.
+Para ejecutar la aplicación fuera de tests se requiere configurar Valkey/Redis y
+Kafka mediante las variables de entorno del runtime. En los tests se utilizan
+mocks de `StringRedisTemplate` y `KafkaTemplate`: no se lanzan servidores.
 Con las variables obligatorias de Kafka configuradas y un JDK 21 activo:
 
 ```sh
@@ -255,19 +250,21 @@ java -jar target/cia-api.jar
 ```
 
 Consultar `GET /actuator/health` en el puerto HTTP configurado (8080 por defecto).
-La prueba de integración verifica HTTP 200 y estado `UP`, incluido Redis. Ese
-health check no sustituye la comprobación de entrega Kafka.
+Las pruebas unitarias no verifican el estado real de Actuator ni conexiones
+externas. El health check y la publicación real se comprueban mediante pruebas
+operativas separadas.
 
 ## Pruebas y validación
 
-Ejecutar `mvn clean verify` con `redis-server` disponible en `PATH` o con
-`REDIS_SERVER_BINARY` apuntando al ejecutable. Las pruebas arrancan procesos
-Redis reales y aislados en puertos libres, sin persistencia y enlazados a
-loopback; no utilizan ni vacían el Redis de la aplicación.
+Ejecutar `mvn clean verify` con JDK 21 y Maven compatible. Las pruebas usan
+Mockito para sustituir la interacción con Redis/Valkey y Kafka; las pruebas HTTP
+usan MockMvc sin abrir puertos. No se requiere `redis-server`, Docker ni conexión
+a servicios DEV en la suite. El mock de scripts simula las respuestas esperadas
+del contrato CLAIM/COMPLETE, pero no verifica la ejecución real de Lua.
 
-La suite cubre arranque con el verificador Boot/Cloud activo, HTTP real,
-confirmación y fallos Kafka simulados, payloads inválidos, serialización, autenticación SCRAM,
-replay, concurrencia, TTL, expiración y finalizaciones tardías. Consultar
+La suite cubre HTTP mediante MockMvc, confirmación y fallos Kafka simulados,
+payloads inválidos, serialización, autenticación SCRAM, replay, concurrencia,
+TTL simulado, expiración simulada y finalizaciones tardías. Consultar
 [src/test/java/mx/com/leenustechs/ciaApi](src/test/java/mx/com/leenustechs/ciaApi).
 
 Kafka se simula en estas pruebas. La entrega contra un broker real y el flujo
