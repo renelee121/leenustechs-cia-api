@@ -15,7 +15,7 @@ pipeline {
             agent { label 'java' }
 
             tools {
-                maven 'Maven-3.10.0'
+                maven 'maven-default'
             }
             
             stages {
