@@ -89,7 +89,8 @@ class GlobalExceptionHandlerTest {
     private static ApiErrorResponse assertError(ResponseEntity<ApiErrorResponse> response,
             HttpStatus status, String transactionId, String code) {
         assertEquals(status, response.getStatusCode());
-        var body = assertNotNull(response.getBody());
+        var body = response.getBody();
+        assertNotNull(body);
         assertEquals(transactionId, body.transactionId());
         assertEquals(code, body.code());
         assertNotNull(body.timestamp());
